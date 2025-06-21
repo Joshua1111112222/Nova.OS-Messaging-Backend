@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
+CORS(app)  #Enable CORS 
 
 # In-memory storage for messages (use a database for production)
 messages = []
