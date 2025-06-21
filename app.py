@@ -1,167 +1,132 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
-import secrets
-import time
 
 app = Flask(__name__)
 CORS(app)
 
-# In-memory storage (replace with DB in prod)
-users = {}
-sessions = {}  # token: username
-messages = []
+# SQLite config
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///messages_app.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Hardcoded admin credentials
+db = SQLAlchemy(app)
+
+# Admin credentials (hardcoded)
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD_HASH = generate_password_hash("Pusheen#99")
 
-# Helper: check admin token
-def is_admin(token):
-    username = sessions.get(token)
-    if not username:
-        return False
-    if username != ADMIN_USERNAME:
-        return False
-    return True
+# Models
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password_hash = db.Column(db.String(200), nullable=False)
 
-# --- Auth ---
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
 
+class Message(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user = db.Column(db.String(80), nullable=False)
+    text = db.Column(db.Text, nullable=False)
+
+# Create tables if not exists
+with app.app_context():
+    db.create_all()
+
+# Register new user
 @app.route('/register', methods=['POST'])
 def register():
     data = request.json
     username = data.get("username")
     password = data.get("password")
+
     if not username or not password:
         return jsonify({"success": False, "error": "Username and password required"}), 400
-    if username in users:
-        return jsonify({"success": False, "error": "Username already exists"}), 400
 
-    password_hash = generate_password_hash(password)
-    users[username] = {"password": password_hash, "created": time.time()}
-    return jsonify({"success": True, "message": "User created"}), 201
+    if username == ADMIN_USERNAME:
+        return jsonify({"success": False, "error": "Cannot register as admin"}), 403
 
+    if User.query.filter_by(username=username).first():
+        return jsonify({"success": False, "error": "Username taken"}), 409
+
+    user = User(username=username, password_hash=generate_password_hash(password))
+    db.session.add(user)
+    db.session.commit()
+
+    return jsonify({"success": True, "message": "Registered successfully"})
+
+# Login user/admin
 @app.route('/login', methods=['POST'])
 def login():
     data = request.json
     username = data.get("username")
     password = data.get("password")
+
     if not username or not password:
         return jsonify({"success": False, "error": "Username and password required"}), 400
-    if username not in users:
-        return jsonify({"success": False, "error": "Invalid username or password"}), 401
 
-    if username == ADMIN_USERNAME:
-        # Special admin check
-        if not check_password_hash(ADMIN_PASSWORD_HASH, password):
-            return jsonify({"success": False, "error": "Invalid admin password"}), 401
-    else:
-        if not check_password_hash(users[username]["password"], password):
-            return jsonify({"success": False, "error": "Invalid username or password"}), 401
+    if username == ADMIN_USERNAME and check_password_hash(ADMIN_PASSWORD_HASH, password):
+        return jsonify({"success": True, "admin": True, "username": ADMIN_USERNAME})
 
-    # Create session token
-    token = secrets.token_hex(16)
-    sessions[token] = username
-    return jsonify({"success": True, "token": token, "username": username}), 200
+    user = User.query.filter_by(username=username).first()
+    if user and user.check_password(password):
+        return jsonify({"success": True, "admin": False, "username": username})
 
-# --- User management (admin only) ---
+    return jsonify({"success": False, "error": "Invalid credentials"}), 401
 
-@app.route('/users', methods=['GET'])
-def list_users():
-    token = request.headers.get("Authorization")
-    if not is_admin(token):
-        return jsonify({"success": False, "error": "Admin access required"}), 403
-    user_list = list(users.keys())
-    return jsonify({"success": True, "users": user_list})
-
-@app.route('/users/<username>', methods=['DELETE'])
-def delete_user(username):
-    token = request.headers.get("Authorization")
-    if not is_admin(token):
-        return jsonify({"success": False, "error": "Admin access required"}), 403
-    if username == ADMIN_USERNAME:
-        return jsonify({"success": False, "error": "Cannot delete admin user"}), 403
-    if username in users:
-        users.pop(username)
-        # Also remove any sessions of deleted user
-        tokens_to_delete = [t for t, u in sessions.items() if u == username]
-        for t in tokens_to_delete:
-            sessions.pop(t)
-        # Optionally remove messages by that user
-        global messages
-        messages = [m for m in messages if m.get("user") != username]
-        return jsonify({"success": True, "message": f"User '{username}' deleted"}), 200
-    return jsonify({"success": False, "error": "User not found"}), 404
-
-# --- Messages ---
-
+# Get all messages
 @app.route('/messages', methods=['GET'])
 def get_messages():
-    token = request.headers.get("Authorization")
-    if token not in sessions:
-        return jsonify({"success": False, "error": "Unauthorized"}), 401
-    return jsonify(messages)
+    msgs = Message.query.order_by(Message.id.asc()).all()
+    return jsonify([{"id": m.id, "user": m.user, "text": m.text} for m in msgs])
 
+# Send message
 @app.route('/messages', methods=['POST'])
 def send_message():
-    token = request.headers.get("Authorization")
-    if token not in sessions:
-        return jsonify({"success": False, "error": "Unauthorized"}), 401
-
     data = request.json
-    text = data.get("text", "").strip()
-    if not text:
-        return jsonify({"success": False, "error": "Empty message"}), 400
+    user = data.get("user")
+    text = data.get("text")
 
-    user = sessions[token]
-    message = {
-        "user": user,
-        "text": text,
-        "timestamp": time.time()
-    }
-    messages.append(message)
-    return jsonify({"success": True, "message": "Message sent"}), 201
+    if not user or not text:
+        return jsonify({"success": False, "error": "User and text required"}), 400
 
-@app.route('/messages/<int:index>', methods=['DELETE'])
-def delete_message(index):
-    token = request.headers.get("Authorization")
-    if token not in sessions:
-        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    msg = Message(user=user, text=text)
+    db.session.add(msg)
+    db.session.commit()
 
-    user = sessions[token]
-    if index < 0 or index >= len(messages):
-        return jsonify({"success": False, "error": "Invalid message index"}), 400
+    return jsonify({"success": True, "message": "Message sent"})
 
-    message = messages[index]
-    # Only admin or the user who sent the message can delete it
-    if user != message["user"] and user != ADMIN_USERNAME:
-        return jsonify({"success": False, "error": "Not authorized to delete this message"}), 403
-
-    messages.pop(index)
-    return jsonify({"success": True, "message": "Message deleted"}), 200
-
-@app.route('/messages/<int:index>', methods=['PUT'])
-def edit_message(index):
-    token = request.headers.get("Authorization")
-    if token not in sessions:
-        return jsonify({"success": False, "error": "Unauthorized"}), 401
-
-    user = sessions[token]
-    if index < 0 or index >= len(messages):
-        return jsonify({"success": False, "error": "Invalid message index"}), 400
-
-    message = messages[index]
-    if user != message["user"] and user != ADMIN_USERNAME:
-        return jsonify({"success": False, "error": "Not authorized to edit this message"}), 403
-
+# Delete user (admin only)
+@app.route('/admin/delete_user', methods=['POST'])
+def delete_user():
     data = request.json
-    new_text = data.get("text", "").strip()
-    if not new_text:
-        return jsonify({"success": False, "error": "Empty message"}), 400
+    admin_username = data.get("admin_username")
+    admin_password = data.get("admin_password")
+    username_to_delete = data.get("username")
 
-    messages[index]["text"] = new_text
-    return jsonify({"success": True, "message": "Message updated"}), 200
+    if admin_username != ADMIN_USERNAME or not check_password_hash(ADMIN_PASSWORD_HASH, admin_password):
+        return jsonify({"success": False, "error": "Admin authentication failed"}), 403
 
+    user = User.query.filter_by(username=username_to_delete).first()
+    if not user:
+        return jsonify({"success": False, "error": "User not found"}), 404
+
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify({"success": True, "message": f"User {username_to_delete} deleted"})
+
+# List all users (admin only)
+@app.route('/admin/list_users', methods=['GET'])
+def list_users():
+    admin_username = request.args.get("admin_username")
+    admin_password = request.args.get("admin_password")
+
+    if admin_username != ADMIN_USERNAME or not check_password_hash(ADMIN_PASSWORD_HASH, admin_password):
+        return jsonify({"success": False, "error": "Admin authentication failed"}), 403
+
+    users = User.query.all()
+    return jsonify([u.username for u in users])
 
 if __name__ == '__main__':
     app.run(debug=True)
