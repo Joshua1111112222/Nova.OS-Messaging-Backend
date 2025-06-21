@@ -14,7 +14,7 @@ db = SQLAlchemy(app)
 
 # Admin credentials (hardcoded)
 ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD_HASH = 'pbkdf2:sha256:600000$qFxvBdX8M3lVmVuW$6c414ef2bd04179b6f79bc132e3a4e7617ee7f6ed4b45c3126b73a0c660bc046'
+ADMIN_PASSWORD_HASH = 'pbkdf2:sha256:600000$4yXAKHQPUSmPWhZo$dc66f1b5271a1f2a589a304063c144f2648e7fe1932c5b2ed63e1f73dd16fd89'  # Hash for "Pusheen#99"
 
 # Models
 class User(db.Model):
