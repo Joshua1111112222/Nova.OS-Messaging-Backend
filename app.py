@@ -14,7 +14,7 @@ db = SQLAlchemy(app)
 
 # Admin credentials (hardcoded)
 ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD_HASH = 'pbkdf2:sha256:600000$4yXAKHQPUSmPWhZo$dc66f1b5271a1f2a589a304063c144f2648e7fe1932c5b2ed63e1f73dd16fd89'  # Hash for "Pusheen#99"
+ADMIN_PASSWORD_HASH = 'pbkdf2:sha256:600000$qFxvBdX8M3lVmVuW$6c414ef2bd04179b6f79bc132e3a4e7617ee7f6ed4b45c3126b73a0c660bc046'  # Pusheen#99
 
 # Models
 class User(db.Model):
@@ -30,7 +30,7 @@ class Message(db.Model):
     user = db.Column(db.String(80), nullable=False)
     text = db.Column(db.Text, nullable=False)
 
-# Create tables if not exists
+# Create tables if not exist
 with app.app_context():
     db.create_all()
 
@@ -112,6 +112,8 @@ def delete_user():
     if not user:
         return jsonify({"success": False, "error": "User not found"}), 404
 
+    # Delete all messages by this user
+    Message.query.filter_by(user=username_to_delete).delete()
     db.session.delete(user)
     db.session.commit()
     return jsonify({"success": True, "message": f"User {username_to_delete} deleted"})
@@ -127,6 +129,20 @@ def list_users():
 
     users = User.query.all()
     return jsonify([u.username for u in users])
+
+# Delete all messages (admin only)
+@app.route('/admin/delete_all_messages', methods=['POST'])
+def delete_all_messages():
+    data = request.json
+    admin_username = data.get("admin_username")
+    admin_password = data.get("admin_password")
+
+    if admin_username != ADMIN_USERNAME or not check_password_hash(ADMIN_PASSWORD_HASH, admin_password):
+        return jsonify({"success": False, "error": "Admin authentication failed"}), 403
+
+    Message.query.delete()
+    db.session.commit()
+    return jsonify({"success": True, "message": "All messages deleted"})
 
 if __name__ == '__main__':
     app.run(debug=True)
