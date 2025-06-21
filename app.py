@@ -1,7 +1,8 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS  # Import CORS
 
 app = Flask(__name__)
-CORS(app)  #Enable CORS 
+CORS(app)  # Enable CORS
 
 # In-memory storage for messages (use a database for production)
 messages = []
