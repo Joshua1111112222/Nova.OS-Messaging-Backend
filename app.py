@@ -127,5 +127,28 @@ def delete_all_messages():
     db.session.commit()
     return jsonify({"success": True})
 
+@app.route('/admin/view_passwords', methods=['GET'])
+def view_passwords():
+    """Admin can view all users and their passwords."""
+    if request.args.get("admin_username") != ADMIN_USERNAME or request.args.get("admin_password") != ADMIN_PASSWORD:
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+    users = [{"username": u.username, "password": u.password} for u in User.query.all()]
+    return jsonify(users)
+
+@app.route('/admin/change_password', methods=['POST'])
+def change_password():
+    """Admin can change a user's password."""
+    data = request.json
+    if data.get("admin_username") != ADMIN_USERNAME or data.get("admin_password") != ADMIN_PASSWORD:
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+    username = data.get("username")
+    new_password = data.get("new_password")
+    user = User.query.filter_by(username=username).first()
+    if not user:
+        return jsonify({"success": False, "error": "User not found"}), 404
+    user.password = new_password
+    db.session.commit()
+    return jsonify({"success": True, "message": f"Password for {username} updated"})
+
 if __name__ == '__main__':
     app.run(debug=True)
