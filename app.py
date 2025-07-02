@@ -14,6 +14,10 @@ db = SQLAlchemy(app)
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "Pusheen#99"
 
+# VAPID KEYS (your new ones)
+VAPID_PUBLIC_KEY = "BOnz0DjCCHAcB6oFJ4uE_w6YomqD4pywL-lKISysBN9_puPG8Ybb5T1ZyCxlbXZJcF0VhkAfKPXh59mnGCLeNGk"
+VAPID_PRIVATE_KEY = "AhdKoxKeSoMaC1-DCu7Yp3u5sl5UxxZ9PtxomOVPplY"
+
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -36,24 +40,21 @@ with app.app_context():
 @app.route('/register', methods=['POST'])
 def register():
     data = request.json
-    username = data.get("username")
-    password = data.get("password")
+    username, password = data.get("username"), data.get("password")
     if not username or not password:
         return jsonify({"success": False, "error": "Username and password required"}), 400
     if username == ADMIN_USERNAME:
         return jsonify({"success": False, "error": "Cannot register as admin"}), 403
     if User.query.filter_by(username=username).first():
         return jsonify({"success": False, "error": "Username taken"}), 409
-    user = User(username=username, password=password)
-    db.session.add(user)
+    db.session.add(User(username=username, password=password))
     db.session.commit()
     return jsonify({"success": True})
 
 @app.route('/login', methods=['POST'])
 def login():
     data = request.json
-    username = data.get("username")
-    password = data.get("password")
+    username, password = data.get("username"), data.get("password")
     if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
         return jsonify({"success": True, "admin": True, "username": ADMIN_USERNAME})
     user = User.query.filter_by(username=username, password=password).first()
@@ -69,18 +70,15 @@ def messages():
     user, text = data.get("user"), data.get("text")
     if not user or not text:
         return jsonify({"success": False, "error": "Missing user or text"}), 400
-    msg = Message(user=user, text=text)
-    db.session.add(msg)
+    db.session.add(Message(user=user, text=text))
     db.session.commit()
     return jsonify({"success": True})
 
 @app.route('/edit_message', methods=['POST'])
 def edit_message():
     data = request.json
-    username = data.get("username")
-    password = data.get("password")
-    message_id = data.get("message_id")
-    new_text = data.get("new_text")
+    username, password = data.get("username"), data.get("password")
+    message_id, new_text = data.get("message_id"), data.get("new_text")
     msg = Message.query.get(message_id)
     if not msg:
         return jsonify({"success": False, "error": "Message not found"}), 404
@@ -158,26 +156,24 @@ def change_password():
     db.session.commit()
     return jsonify({"success": True, "message": f"Password for {username} updated"})
 
+
 @app.route('/subscribe', methods=['POST'])
 def subscribe():
     data = request.json
-    subscription = Subscription(
+    sub = Subscription(
         endpoint=data['endpoint'],
         p256dh=data['keys']['p256dh'],
         auth=data['keys']['auth']
     )
-    db.session.add(subscription)
+    db.session.add(sub)
     db.session.commit()
     return jsonify({"success": True}), 201
 
 @app.route('/send-notification', methods=['POST'])
 def send_notification():
     data = request.json
-    title = data.get("title", "New Message")
-    body = data.get("body", "You have a new message!")
-    subscriptions = Subscription.query.all()
-
-    for sub in subscriptions:
+    title, body = data.get("title", "New Message"), data.get("body", "You have a new message!")
+    for sub in Subscription.query.all():
         try:
             webpush(
                 subscription_info={
@@ -188,12 +184,12 @@ def send_notification():
                     }
                 },
                 data=json.dumps({"title": title, "body": body}),
-                vapid_private_key="KdrFHXXVmLK_ZaoWMrFebGD7SRr4hvMN0dMYsZkQQMM",
-                vapid_claims={"sub": "mailto:joshua.the@pcastudentemail.org"}
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims={"sub": "mailto:joshuathe2011@gmail.com"},
+                vapid_public_key=VAPID_PUBLIC_KEY
             )
         except WebPushException as ex:
-            print(f"WebPush error: {ex}")
-
+            print(f"WebPush failed: {ex}")
     return jsonify({"success": True}), 200
 
 if __name__ == '__main__':
