@@ -1,3 +1,10 @@
+from flask import Flask, request, jsonify
+from flask_cors import CORS  # Import CORS
+from flask_sqlalchemy import SQLAlchemy
+import json
+from pywebpush import webpush, WebPushException
+
+app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///messages_app.db'
