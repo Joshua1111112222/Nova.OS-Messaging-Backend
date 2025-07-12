@@ -22,7 +22,7 @@ VAPID_PUBLIC_KEY = "BOnz0DjCCHAcB6oFJ4uE_w6YomqD4pywL-lKISysBN9_puPG8Ybb5T1ZyCxl
 VAPID_PRIVATE_KEY = "AhdKoxKeSoMaC1-DCu7Yp3u5sl5UxxZ9PtxomOVPplY"
 
 # Gemini config
-genai.configure(api_key="YOUR_GEMINI_API_KEY")
+genai.configure(api_key="AIzaSyBmvvOHdCEkqg8UYVh2tVoe2EFEV5rLYvE")
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
