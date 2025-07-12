@@ -1,8 +1,11 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
-import json
 from pywebpush import webpush, WebPushException
+from bs4 import BeautifulSoup
+import google.generativeai as genai
+import requests
+import json
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
@@ -14,9 +17,12 @@ db = SQLAlchemy(app)
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "Pusheen#99"
 
-# VAPID KEYS (your new ones)
+# VAPID KEYS
 VAPID_PUBLIC_KEY = "BOnz0DjCCHAcB6oFJ4uE_w6YomqD4pywL-lKISysBN9_puPG8Ybb5T1ZyCxlbXZJcF0VhkAfKPXh59mnGCLeNGk"
 VAPID_PRIVATE_KEY = "AhdKoxKeSoMaC1-DCu7Yp3u5sl5UxxZ9PtxomOVPplY"
+
+# Gemini config
+genai.configure(api_key="YOUR_GEMINI_API_KEY")
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -135,7 +141,6 @@ def delete_all_messages():
 
 @app.route('/admin/view_passwords', methods=['GET'])
 def view_passwords():
-    """Admin can view all users and their passwords."""
     if request.args.get("admin_username") != ADMIN_USERNAME or request.args.get("admin_password") != ADMIN_PASSWORD:
         return jsonify({"success": False, "error": "Unauthorized"}), 403
     users = [{"username": u.username, "password": u.password} for u in User.query.all()]
@@ -143,7 +148,6 @@ def view_passwords():
 
 @app.route('/admin/change_password', methods=['POST'])
 def change_password():
-    """Admin can change a user's password."""
     data = request.json
     if data.get("admin_username") != ADMIN_USERNAME or data.get("admin_password") != ADMIN_PASSWORD:
         return jsonify({"success": False, "error": "Unauthorized"}), 403
@@ -155,7 +159,6 @@ def change_password():
     user.password = new_password
     db.session.commit()
     return jsonify({"success": True, "message": f"Password for {username} updated"})
-
 
 @app.route('/subscribe', methods=['POST'])
 def subscribe():
@@ -191,6 +194,44 @@ def send_notification():
         except WebPushException as ex:
             print(f"WebPush failed: {ex}")
     return jsonify({"success": True}), 200
+
+@app.route('/chat', methods=['POST'])
+def chat():
+    data = request.json
+    prompt = data.get("prompt")
+    if not prompt:
+        return jsonify({"success": False, "error": "Prompt required"}), 400
+
+    model = genai.GenerativeModel('gemini-pro')
+    response = model.generate_content(prompt)
+    answer = response.text.strip()
+
+    # Fallback if Gemini answer is generic or empty
+    if not answer or "I don't know" in answer or "As an AI" in answer:
+        query = '+'.join(prompt.split())
+        search_url = f"https://www.google.com/search?q={query}"
+        headers = {"User-Agent": "Mozilla/5.0"}
+
+        try:
+            search_page = requests.get(search_url, headers=headers, timeout=5)
+            soup = BeautifulSoup(search_page.text, "html.parser")
+
+            snippets = []
+            for div in soup.find_all("div", class_="BNeawe s3v9rd AP7Wnd"):
+                snippets.append(div.get_text())
+                if len(snippets) >= 3:
+                    break
+
+            if snippets:
+                combined = " ".join(snippets)
+                new_prompt = f"{prompt}\n\nExtra context:\n{combined}"
+                response = model.generate_content(new_prompt)
+                answer = response.text.strip()
+
+        except Exception as e:
+            answer = f"Gemini didn't know, and web fallback failed: {str(e)}"
+
+    return jsonify({"success": True, "answer": answer})
 
 if __name__ == '__main__':
     app.run(debug=True)
