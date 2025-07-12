@@ -198,40 +198,42 @@ def send_notification():
 @app.route('/chat', methods=['POST'])
 def chat():
     data = request.json
-    prompt = data.get("prompt")
-    if not prompt:
-        return jsonify({"success": False, "error": "Prompt required"}), 400
+    history = data.get("history", [])
+    if not history or not isinstance(history, list):
+        return jsonify({"success": False, "error": "History (list of messages) required"}), 400
 
     model = genai.GenerativeModel('gemini-pro')
-    response = model.generate_content(prompt)
-    answer = response.text.strip()
 
-    # Fallback if Gemini answer is generic or empty
-    if not answer or "I don't know" in answer or "As an AI" in answer:
-        query = '+'.join(prompt.split())
-        search_url = f"https://www.google.com/search?q={query}"
-        headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        # Gemini expects a list of messages like [{'role': 'user', 'content': 'Hello'}, ...]
+        response = model.generate_chat(messages=history)
+        answer = response.text.strip()
 
-        try:
-            search_page = requests.get(search_url, headers=headers, timeout=5)
-            soup = BeautifulSoup(search_page.text, "html.parser")
+        # Check for generic or empty response fallback
+        if not answer or any(phrase in answer.lower() for phrase in ["i don't know", "as an ai"]):
+            # Use last user message to search fallback
+            last_user_message = next((msg['content'] for msg in reversed(history) if msg['role'] == 'user'), None)
+            if last_user_message:
+                query = '+'.join(last_user_message.split())
+                search_url = f"https://www.google.com/search?q={query}"
+                headers = {"User-Agent": "Mozilla/5.0"}
+                search_page = requests.get(search_url, headers=headers, timeout=5)
+                soup = BeautifulSoup(search_page.text, "html.parser")
 
-            snippets = []
-            for div in soup.find_all("div", class_="BNeawe s3v9rd AP7Wnd"):
-                snippets.append(div.get_text())
-                if len(snippets) >= 3:
-                    break
+                snippets = []
+                for div in soup.find_all("div", class_="BNeawe s3v9rd AP7Wnd"):
+                    snippets.append(div.get_text())
+                    if len(snippets) >= 3:
+                        break
 
-            if snippets:
-                combined = " ".join(snippets)
-                new_prompt = f"{prompt}\n\nExtra context:\n{combined}"
-                response = model.generate_content(new_prompt)
-                answer = response.text.strip()
+                if snippets:
+                    combined = " ".join(snippets)
+                    # Append extra context to the conversation
+                    new_history = history + [{"role": "system", "content": f"Extra context from web search: {combined}"}]
+                    response = model.generate_chat(messages=new_history)
+                    answer = response.text.strip()
 
-        except Exception as e:
-            answer = f"Gemini didn't know, and web fallback failed: {str(e)}"
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Chat error: {str(e)}"}), 500
 
     return jsonify({"success": True, "answer": answer})
-
-if __name__ == '__main__':
-    app.run(debug=True)
