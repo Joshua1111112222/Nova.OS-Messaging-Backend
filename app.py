@@ -23,7 +23,7 @@ VAPID_PUBLIC_KEY = "BOnz0DjCCHAcB6oFJ4uE_w6YomqD4pywL-lKISysBN9_puPG8Ybb5T1ZyCxl
 VAPID_PRIVATE_KEY = "AhdKoxKeSoMaC1-DCu7Yp3u5sl5UxxZ9PtxomOVPplY"
 
 # Gemini API key for AI chat
-genai.configure(api_key="YOUR_GEMINI_API_KEY_HERE")
+genai.configure(api_key="AIzaSyBmvvOHdCEkqg8UYVh2tVoe2EFEV5rLYvE")
 
 SYSTEM_PROMPT = (
     "You are an AI named Delta, created by Joshua The. "
