@@ -18,7 +18,7 @@ db = SQLAlchemy(app)
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "Pusheen#99"
 
-# VAPID Keys for push notifications
+# VAPID Keys for push notifications (if you use them)
 VAPID_PUBLIC_KEY = "BOnz0DjCCHAcB6oFJ4uE_w6YomqD4pywL-lKISysBN9_puPG8Ybb5T1ZyCxlbXZJcF0VhkAfKPXh59mnGCLeNGk"
 VAPID_PRIVATE_KEY = "AhdKoxKeSoMaC1-DCu7Yp3u5sl5UxxZ9PtxomOVPplY"
 
@@ -31,7 +31,6 @@ SYSTEM_PROMPT = (
 )
 
 # DB Models
-
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -51,7 +50,7 @@ class Subscription(db.Model):
 with app.app_context():
     db.create_all()
 
-# Helper: Web search snippets for fallback context
+# Helper: Web search snippets for fallback context using BeautifulSoup (Google search)
 def web_search_snippets(query, max_snippets=3):
     try:
         search_url = f"https://www.google.com/search?q={'+'.join(query.split())}"
@@ -71,7 +70,8 @@ def web_search_snippets(query, max_snippets=3):
         print(f"Web search error: {e}")
         return ""
 
-# User registration
+# --- Messaging app endpoints (same as before) ---
+
 @app.route('/register', methods=['POST'])
 def register():
     data = request.json
@@ -86,7 +86,6 @@ def register():
     db.session.commit()
     return jsonify({"success": True})
 
-# User login
 @app.route('/login', methods=['POST'])
 def login():
     data = request.json
@@ -98,7 +97,6 @@ def login():
         return jsonify({"success": True, "admin": False, "username": username})
     return jsonify({"success": False, "error": "Invalid credentials"}), 401
 
-# Get or post messages
 @app.route('/messages', methods=['GET', 'POST'])
 def messages():
     if request.method == 'GET':
@@ -112,7 +110,6 @@ def messages():
     db.session.commit()
     return jsonify({"success": True})
 
-# Edit message (admin or own message)
 @app.route('/edit_message', methods=['POST'])
 def edit_message():
     data = request.json
@@ -131,7 +128,6 @@ def edit_message():
     db.session.commit()
     return jsonify({"success": True})
 
-# Delete message (admin only)
 @app.route('/admin/delete_message', methods=['POST'])
 def delete_message():
     data = request.json
@@ -144,14 +140,12 @@ def delete_message():
     db.session.commit()
     return jsonify({"success": True})
 
-# List users (admin only)
 @app.route('/admin/list_users')
 def list_users():
     if request.args.get("admin_username") != ADMIN_USERNAME or request.args.get("admin_password") != ADMIN_PASSWORD:
         return jsonify({"success": False, "error": "Unauthorized"}), 403
     return jsonify([u.username for u in User.query.all()])
 
-# Delete user (admin only)
 @app.route('/admin/delete_user', methods=['POST'])
 def delete_user():
     data = request.json
@@ -166,7 +160,6 @@ def delete_user():
     db.session.commit()
     return jsonify({"success": True})
 
-# Delete all messages (admin only)
 @app.route('/admin/delete_all_messages', methods=['POST'])
 def delete_all_messages():
     data = request.json
@@ -176,7 +169,6 @@ def delete_all_messages():
     db.session.commit()
     return jsonify({"success": True})
 
-# View passwords (admin only)
 @app.route('/admin/view_passwords', methods=['GET'])
 def view_passwords():
     if request.args.get("admin_username") != ADMIN_USERNAME or request.args.get("admin_password") != ADMIN_PASSWORD:
@@ -184,7 +176,6 @@ def view_passwords():
     users = [{"username": u.username, "password": u.password} for u in User.query.all()]
     return jsonify(users)
 
-# Change password (admin only)
 @app.route('/admin/change_password', methods=['POST'])
 def change_password():
     data = request.json
@@ -199,7 +190,7 @@ def change_password():
     db.session.commit()
     return jsonify({"success": True, "message": f"Password for {username} updated"})
 
-# Push notification subscription
+# Push notification subscription & send (optional, you can remove if unused)
 @app.route('/subscribe', methods=['POST'])
 def subscribe():
     data = request.json
@@ -212,7 +203,6 @@ def subscribe():
     db.session.commit()
     return jsonify({"success": True}), 201
 
-# Send push notification to all subscribers
 @app.route('/send-notification', methods=['POST'])
 def send_notification():
     data = request.json
@@ -234,7 +224,8 @@ def send_notification():
             print(f"WebPush failed: {ex}")
     return jsonify({"success": True}), 200
 
-# AI chat endpoint with Gemini + fallback
+# --- AI chat endpoint with Gemini + fallback to beautiful soup web search ---
+
 @app.route('/chat', methods=['POST'])
 def chat():
     data = request.get_json(force=True)
@@ -246,6 +237,7 @@ def chat():
     if not isinstance(history, list):
         return jsonify({"success": False, "error": "History must be a list"}), 400
 
+    # Compose messages for Gemini chat
     messages_for_gemini = [{"role": "system", "content": SYSTEM_PROMPT}]
     for msg in history:
         role = msg.get("role")
@@ -264,7 +256,7 @@ def chat():
         )
         answer = response.text.strip()
 
-        # fallback on generic/empty answers
+        # Fallback to web search if answer is unsatisfactory
         if (
             not answer
             or len(answer) < 5
