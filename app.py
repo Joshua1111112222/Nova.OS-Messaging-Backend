@@ -59,16 +59,22 @@ def web_search_snippets(query, max_snippets=3):
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
         snippets = []
-        for div in soup.find_all("div", class_="BNeawe s3v9rd AP7Wnd"):
+        
+        # Try multiple selectors for snippets
+        snippet_divs = soup.select('div.VwiC3b')  # Google snippet container
+        
+        for div in snippet_divs:
             text = div.get_text(strip=True)
             if text and text not in snippets:
                 snippets.append(text)
             if len(snippets) >= max_snippets:
                 break
+                
         return " ".join(snippets)
     except Exception as e:
         print(f"Web search error: {e}")
         return ""
+
 
 # --- Messaging app endpoints (same as before) ---
 
